@@ -28,7 +28,7 @@
 #include "vulkanexamplebase.h"
 
 // Set to "true" to enable Vulkan's validation layers (see vulkandebug.cpp for details)
-#define ENABLE_VALIDATION false
+#define ENABLE_VALIDATION true
 // Set to "true" to use staging buffers for uploading vertex and index data to device local memory
 // See "prepareVertices" for details on what's staging and on why to use it
 #define USE_STAGING true
@@ -111,6 +111,9 @@ public:
 	// Fences
 	// Used to check the completion of queue operations (e.g. command buffer execution)
 	std::vector<VkFence> waitFences;
+
+	// Command buffers used for secondary command buffers
+	std::vector<VkCommandBuffer> secondaryCmdBuffers;
 
 	VulkanExample() : VulkanExampleBase(ENABLE_VALIDATION)
 	{
@@ -253,6 +256,18 @@ public:
 	// This allows to generate work upfront and from multiple threads, one of the biggest advantages of Vulkan
 	void buildCommandBuffers()
 	{
+		secondaryCmdBuffers.resize(drawCmdBuffers.size());
+
+		VkCommandBufferAllocateInfo secondaryCmdBufAllocateInfo =
+			vks::initializers::commandBufferAllocateInfo(
+				cmdPool,
+				VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+				static_cast<uint32_t>(secondaryCmdBuffers.size()));
+		VK_CHECK_RESULT(vkAllocateCommandBuffers(device, &secondaryCmdBufAllocateInfo, secondaryCmdBuffers.data()));
+
+
+
+
 		VkCommandBufferBeginInfo cmdBufInfo = {};
 		cmdBufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		cmdBufInfo.pNext = nullptr;
@@ -273,17 +288,20 @@ public:
 		renderPassBeginInfo.renderArea.extent.height = height;
 		renderPassBeginInfo.clearValueCount = 2;
 		renderPassBeginInfo.pClearValues = clearValues;
-	
+
 		for (int32_t i = 0; i < drawCmdBuffers.size(); ++i)
 		{
-			// Set target frame buffer
-			renderPassBeginInfo.framebuffer = frameBuffers[i];
+			// Inheritance info for the secondary command buffers
+			VkCommandBufferInheritanceInfo inheritanceInfo = vks::initializers::commandBufferInheritanceInfo();
+			inheritanceInfo.renderPass = renderPass;
+			// Secondary command buffer also use the currently active framebuffer
+			inheritanceInfo.framebuffer = frameBuffers[i];
 
-			VK_CHECK_RESULT(vkBeginCommandBuffer(drawCmdBuffers[i], &cmdBufInfo));
+			VkCommandBufferBeginInfo commandBufferBeginInfo = vks::initializers::commandBufferBeginInfo();
+			commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+			commandBufferBeginInfo.pInheritanceInfo = &inheritanceInfo;
 
-			// Start the first sub pass specified in our default render pass setup by the base class
-			// This will clear the color and depth attachment
-			vkCmdBeginRenderPass(drawCmdBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+			VK_CHECK_RESULT(vkBeginCommandBuffer(secondaryCmdBuffers[i], &commandBufferBeginInfo));
 
 			// Update dynamic viewport state
 			VkViewport viewport = {};
@@ -291,7 +309,7 @@ public:
 			viewport.width = (float)width;
 			viewport.minDepth = (float) 0.0f;
 			viewport.maxDepth = (float) 1.0f;
-			vkCmdSetViewport(drawCmdBuffers[i], 0, 1, &viewport);
+			vkCmdSetViewport(secondaryCmdBuffers[i], 0, 1, &viewport);
 
 			// Update dynamic scissor state
 			VkRect2D scissor = {};
@@ -299,6 +317,42 @@ public:
 			scissor.extent.height = height;
 			scissor.offset.x = 0;
 			scissor.offset.y = 0;
+			vkCmdSetScissor(secondaryCmdBuffers[i], 0, 1, &scissor);
+
+			// Bind descriptor sets describing shader binding points
+			vkCmdBindDescriptorSets(secondaryCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+
+			// Bind the rendering pipeline
+			// The pipeline (state object) contains all states of the rendering pipeline, binding it will set all the states specified at pipeline creation time
+			vkCmdBindPipeline(secondaryCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+
+			// Bind triangle vertex buffer (contains position and colors)
+			VkDeviceSize offsets[1] = { 0 };
+			vkCmdBindVertexBuffers(secondaryCmdBuffers[i], 0, 1, &vertices.buffer, offsets);
+
+			// Bind triangle index buffer
+			vkCmdBindIndexBuffer(secondaryCmdBuffers[i], indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+			// Draw indexed triangle
+			vkCmdDrawIndexed(secondaryCmdBuffers[i], indices.count, 1, 0, 0, 1);
+
+			VK_CHECK_RESULT(vkEndCommandBuffer(secondaryCmdBuffers[i]));
+
+
+
+			// Set target frame buffer
+			renderPassBeginInfo.framebuffer = frameBuffers[i];
+
+			VK_CHECK_RESULT(vkBeginCommandBuffer(drawCmdBuffers[i], &cmdBufInfo));
+/*
+			// Start the first sub pass specified in our default render pass setup by the base class
+			// This will clear the color and depth attachment
+			vkCmdBeginRenderPass(drawCmdBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+			// Update dynamic viewport state
+			vkCmdSetViewport(drawCmdBuffers[i], 0, 1, &viewport);
+
+			// Update dynamic scissor state
 			vkCmdSetScissor(drawCmdBuffers[i], 0, 1, &scissor);
 
 			// Bind descriptor sets describing shader binding points
@@ -309,7 +363,6 @@ public:
 			vkCmdBindPipeline(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
 			// Bind triangle vertex buffer (contains position and colors)
-			VkDeviceSize offsets[1] = { 0 };
 			vkCmdBindVertexBuffers(drawCmdBuffers[i], 0, 1, &vertices.buffer, offsets);
 
 			// Bind triangle index buffer
@@ -317,6 +370,9 @@ public:
 
 			// Draw indexed triangle
 			vkCmdDrawIndexed(drawCmdBuffers[i], indices.count, 1, 0, 0, 1);
+*/
+			vkCmdBeginRenderPass(drawCmdBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+			vkCmdExecuteCommands(drawCmdBuffers[i], 1, &secondaryCmdBuffers[i]);
 
 			vkCmdEndRenderPass(drawCmdBuffers[i]);
 
@@ -878,12 +934,28 @@ public:
 		colorBlendState.attachmentCount = 1;
 		colorBlendState.pAttachments = blendAttachmentState;
 
+		// Update dynamic viewport state
+		VkViewport viewport = {};
+		viewport.height = (float)height;
+		viewport.width = (float)width;
+		viewport.minDepth = (float) 0.0f;
+		viewport.maxDepth = (float) 1.0f;
+
+		// Update dynamic scissor state
+		VkRect2D scissor = {};
+		scissor.extent.width = width;
+		scissor.extent.height = height;
+		scissor.offset.x = 0;
+		scissor.offset.y = 0;
+
 		// Viewport state sets the number of viewports and scissor used in this pipeline
 		// Note: This is actually overriden by the dynamic states (see below)
 		VkPipelineViewportStateCreateInfo viewportState = {};
 		viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
 		viewportState.viewportCount = 1;
+		viewportState.pViewports = &viewport;
 		viewportState.scissorCount = 1;
+		viewportState.pScissors = &scissor;
 
 		// Enable dynamic states
 		// Most states are baked into the pipeline, but there are still a few dynamic states that can be changed within a command buffer
