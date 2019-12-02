@@ -47,8 +47,8 @@ set(EXAMPLES
 	01-command-buffer-inline
 	02-command-buffer-secondary
 	03-command-buffer-one-time
-	03-shader-push-constants
 	04-timestamps
+	05-shader-push-constants
 	bloom
 	computecloth
 	computecullandlod
