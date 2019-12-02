@@ -44,6 +44,10 @@ function(buildExamples)
 endfunction(buildExamples)
 
 set(EXAMPLES
+	01-command-buffer-inline
+	02-command-buffer-secondary
+	03-shader-push-constants
+	04-timestamps
 	bloom
 	computecloth
 	computecullandlod
