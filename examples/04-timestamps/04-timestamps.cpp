@@ -115,6 +115,9 @@ public:
 	enum timestamp
 	{
 		TIMESTAMP_TOP,
+		TIMESTAMP_VERTEX_SHADER,
+		TIMESTAMP_FRAGMENT_SHADER,
+		TIMESTAMP_COLOR_ATTACHMENT_OUTPUT,
 		TIMESTAMP_BOTTOM,
 		TIMESTAMP_MAX
 	};
@@ -131,6 +134,9 @@ public:
 	~VulkanExample()
 	{
 		vkDestroyQueryPool(this->device, this->timestampPool[TIMESTAMP_BOTTOM], NULL);
+		vkDestroyQueryPool(this->device, this->timestampPool[TIMESTAMP_VERTEX_SHADER], NULL);
+		vkDestroyQueryPool(this->device, this->timestampPool[TIMESTAMP_FRAGMENT_SHADER], NULL);
+		vkDestroyQueryPool(this->device, this->timestampPool[TIMESTAMP_COLOR_ATTACHMENT_OUTPUT], NULL);
 		vkDestroyQueryPool(this->device, this->timestampPool[TIMESTAMP_TOP], NULL);
 
 		// Clean up used Vulkan resources 
@@ -298,6 +304,9 @@ public:
 		VK_CHECK_RESULT(vkBeginCommandBuffer(drawCmdBuffers[currentBuffer], &cmdBufInfo));
 
 		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestampPool[TIMESTAMP_TOP], currentBuffer);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, timestampPool[TIMESTAMP_VERTEX_SHADER], currentBuffer);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, timestampPool[TIMESTAMP_FRAGMENT_SHADER], currentBuffer);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, timestampPool[TIMESTAMP_COLOR_ATTACHMENT_OUTPUT], currentBuffer);
 		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestampPool[TIMESTAMP_BOTTOM], currentBuffer);
 
 		// Start the first sub pass specified in our default render pass setup by the base class
@@ -345,6 +354,12 @@ public:
 		VK_CHECK_RESULT(vkEndCommandBuffer(drawCmdBuffers[currentBuffer]));
 	}
 
+	double GetTimeMS(std::uint64_t Top, std::uint64_t Current) const
+	{
+		double const timestampPeriodNS = this->deviceProperties.limits.timestampPeriod;
+		return double(Current - Top) / timestampPeriodNS / 1000.0 / 1000.0;
+	}
+
 	void draw()
 	{
 		// Get next image in the swap chain (back/front buffer)
@@ -356,11 +371,21 @@ public:
 
 		std::uint64_t timestampTop = 0;
 		VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_TOP], currentBuffer, 1, sizeof(std::uint64_t), &timestampTop, 0, VK_QUERY_RESULT_64_BIT));
+		std::uint64_t timestampVertexShader = 0;
+		VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_VERTEX_SHADER], currentBuffer, 1, sizeof(std::uint64_t), &timestampVertexShader, 0, VK_QUERY_RESULT_64_BIT));
+		std::uint64_t timestampFragmentShader = 0;
+		VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_FRAGMENT_SHADER], currentBuffer, 1, sizeof(std::uint64_t), &timestampFragmentShader, 0, VK_QUERY_RESULT_64_BIT));
+		std::uint64_t timestampColorAttachmentOuput = 0;
+		VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_COLOR_ATTACHMENT_OUTPUT], currentBuffer, 1, sizeof(std::uint64_t), &timestampColorAttachmentOuput, 0, VK_QUERY_RESULT_64_BIT));
 		std::uint64_t timestampBottom = 0;
 		VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_BOTTOM], currentBuffer, 1, sizeof(std::uint64_t), &timestampBottom, 0, VK_QUERY_RESULT_64_BIT));
 
-		double const timestampPeriodNS = this->deviceProperties.limits.timestampPeriod;
-		printf("\rGPU frame time: %f ms", double(timestampBottom - timestampTop) / timestampPeriodNS / 1000.0 / 1000.0);
+
+		printf("\rGPU frame time, total %f ms; vertex %f ms; frag %f ms; color write %f ms",
+			GetTimeMS(timestampTop, timestampBottom),
+			GetTimeMS(timestampTop, timestampVertexShader),
+			GetTimeMS(timestampTop, timestampFragmentShader),
+			GetTimeMS(timestampTop, timestampColorAttachmentOuput));
 
 		buildCommandBuffers(currentBuffer);
 
@@ -1130,6 +1155,9 @@ public:
 		queryPoolCreateInfo.queryCount = drawCmdBuffers.size();
 
 		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPool[TIMESTAMP_TOP]));
+		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPool[TIMESTAMP_VERTEX_SHADER]));
+		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPool[TIMESTAMP_FRAGMENT_SHADER]));
+		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPool[TIMESTAMP_COLOR_ATTACHMENT_OUTPUT]));
 		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPool[TIMESTAMP_BOTTOM]));
 
 		prepared = true;
