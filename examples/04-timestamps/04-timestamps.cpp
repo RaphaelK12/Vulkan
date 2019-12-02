@@ -49,17 +49,17 @@ public:
 	} vertices;
 
 	// Index buffer
-	struct 
+	struct
 	{
-		VkDeviceMemory memory;		
-		VkBuffer buffer;			
+		VkDeviceMemory memory;
+		VkBuffer buffer;
 		uint32_t count;
 	} indices;
 
 	// Uniform buffer block object
 	struct {
-		VkDeviceMemory memory;		
-		VkBuffer buffer;			
+		VkDeviceMemory memory;
+		VkBuffer buffer;
 		VkDescriptorBufferInfo descriptor;
 	}  uniformBufferVS;
 
@@ -159,7 +159,7 @@ public:
 			if ((typeBits & 1) == 1)
 			{
 				if ((deviceMemoryProperties.memoryTypes[i].propertyFlags & properties) == properties)
-				{						
+				{
 					return i;
 				}
 			}
@@ -206,7 +206,7 @@ public:
 		cmdBufAllocateInfo.commandPool = cmdPool;
 		cmdBufAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 		cmdBufAllocateInfo.commandBufferCount = 1;
-	
+
 		VK_CHECK_RESULT(vkAllocateCommandBuffers(device, &cmdBufAllocateInfo, &cmdBuffer));
 
 		// If requested, also start the new command buffer
@@ -251,10 +251,13 @@ public:
 	// Build separate command buffers for every framebuffer image
 	// Unlike in OpenGL all rendering commands are recorded once into command buffers that are then resubmitted to the queue
 	// This allows to generate work upfront and from multiple threads, one of the biggest advantages of Vulkan
-	void buildCommandBuffers()
+	void buildCommandBuffers(uint32_t currentBuffer)
 	{
+		VK_CHECK_RESULT(vkResetCommandBuffer(drawCmdBuffers[currentBuffer], VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));
+
 		VkCommandBufferBeginInfo cmdBufInfo = {};
 		cmdBufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 		cmdBufInfo.pNext = nullptr;
 
 		// Set clear values for all framebuffer attachments with loadOp set to clear
@@ -274,57 +277,57 @@ public:
 		renderPassBeginInfo.clearValueCount = 2;
 		renderPassBeginInfo.pClearValues = clearValues;
 
-		for (int32_t i = 0; i < drawCmdBuffers.size(); ++i)
-		{
-			// Set target frame buffer
-			renderPassBeginInfo.framebuffer = frameBuffers[i];
 
-			VK_CHECK_RESULT(vkBeginCommandBuffer(drawCmdBuffers[i], &cmdBufInfo));
 
-			// Start the first sub pass specified in our default render pass setup by the base class
-			// This will clear the color and depth attachment
-			vkCmdBeginRenderPass(drawCmdBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-			// Update dynamic viewport state
-			VkViewport viewport = {};
-			viewport.height = (float)height;
-			viewport.width = (float)width;
-			viewport.minDepth = (float) 0.0f;
-			viewport.maxDepth = (float) 1.0f;
-			vkCmdSetViewport(drawCmdBuffers[i], 0, 1, &viewport);
+		// Set target frame buffer
+		renderPassBeginInfo.framebuffer = frameBuffers[currentBuffer];
 
-			// Update dynamic scissor state
-			VkRect2D scissor = {};
-			scissor.extent.width = width;
-			scissor.extent.height = height;
-			scissor.offset.x = 0;
-			scissor.offset.y = 0;
-			vkCmdSetScissor(drawCmdBuffers[i], 0, 1, &scissor);
+		VK_CHECK_RESULT(vkBeginCommandBuffer(drawCmdBuffers[currentBuffer], &cmdBufInfo));
 
-			// Bind descriptor sets describing shader binding points
-			vkCmdBindDescriptorSets(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+		// Start the first sub pass specified in our default render pass setup by the base class
+		// This will clear the color and depth attachment
+		vkCmdBeginRenderPass(drawCmdBuffers[currentBuffer], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-			// Bind the rendering pipeline
-			// The pipeline (state object) contains all states of the rendering pipeline, binding it will set all the states specified at pipeline creation time
-			vkCmdBindPipeline(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+		// Update dynamic viewport state
+		VkViewport viewport = {};
+		viewport.height = (float)height;
+		viewport.width = (float)width;
+		viewport.minDepth = (float) 0.0f;
+		viewport.maxDepth = (float) 1.0f;
+		vkCmdSetViewport(drawCmdBuffers[currentBuffer], 0, 1, &viewport);
 
-			// Bind triangle vertex buffer (contains position and colors)
-			VkDeviceSize offsets[1] = { 0 };
-			vkCmdBindVertexBuffers(drawCmdBuffers[i], 0, 1, &vertices.buffer, offsets);
+		// Update dynamic scissor state
+		VkRect2D scissor = {};
+		scissor.extent.width = width;
+		scissor.extent.height = height;
+		scissor.offset.x = 0;
+		scissor.offset.y = 0;
+		vkCmdSetScissor(drawCmdBuffers[currentBuffer], 0, 1, &scissor);
 
-			// Bind triangle index buffer
-			vkCmdBindIndexBuffer(drawCmdBuffers[i], indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+		// Bind descriptor sets describing shader binding points
+		vkCmdBindDescriptorSets(drawCmdBuffers[currentBuffer], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 
-			// Draw indexed triangle
-			vkCmdDrawIndexed(drawCmdBuffers[i], indices.count, 1, 0, 0, 1);
+		// Bind the rendering pipeline
+		// The pipeline (state object) contains all states of the rendering pipeline, binding it will set all the states specified at pipeline creation time
+		vkCmdBindPipeline(drawCmdBuffers[currentBuffer], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
-			vkCmdEndRenderPass(drawCmdBuffers[i]);
+		// Bind triangle vertex buffer (contains position and colors)
+		VkDeviceSize offsets[1] = { 0 };
+		vkCmdBindVertexBuffers(drawCmdBuffers[currentBuffer], 0, 1, &vertices.buffer, offsets);
 
-			// Ending the render pass will add an implicit barrier transitioning the frame buffer color attachment to 
-			// VK_IMAGE_LAYOUT_PRESENT_SRC_KHR for presenting it to the windowing system
+		// Bind triangle index buffer
+		vkCmdBindIndexBuffer(drawCmdBuffers[currentBuffer], indices.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-			VK_CHECK_RESULT(vkEndCommandBuffer(drawCmdBuffers[i]));
-		}
+		// Draw indexed triangle
+		vkCmdDrawIndexed(drawCmdBuffers[currentBuffer], indices.count, 1, 0, 0, 1);
+
+		vkCmdEndRenderPass(drawCmdBuffers[currentBuffer]);
+
+		// Ending the render pass will add an implicit barrier transitioning the frame buffer color attachment to 
+		// VK_IMAGE_LAYOUT_PRESENT_SRC_KHR for presenting it to the windowing system
+
+		VK_CHECK_RESULT(vkEndCommandBuffer(drawCmdBuffers[currentBuffer]));
 	}
 
 	void draw()
@@ -335,6 +338,11 @@ public:
 		// Use a fence to wait until the command buffer has finished execution before using it again
 		VK_CHECK_RESULT(vkWaitForFences(device, 1, &waitFences[currentBuffer], VK_TRUE, UINT64_MAX));
 		VK_CHECK_RESULT(vkResetFences(device, 1, &waitFences[currentBuffer]));
+
+		buildCommandBuffers(currentBuffer);
+
+
+
 
 		// Pipeline stage at which the queue submission will wait (via pWaitSemaphores)
 		VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -351,7 +359,7 @@ public:
 
 		// Submit to the graphics queue passing a wait fence
 		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, waitFences[currentBuffer]));
-		
+
 		// Present the current buffer to the swap chain
 		// Pass the semaphore signaled by the command buffer submission from the submit info as the wait semaphore for swap chain presentation
 		// This ensures that the image is not presented to the windowing system until all commands have been submitted
@@ -367,7 +375,7 @@ public:
 		//	what should be done a real-world application, where you should allocate large chunkgs of memory at once isntead.
 
 		// Setup vertices
-		std::vector<Vertex> vertexBuffer = 
+		std::vector<Vertex> vertexBuffer =
 		{
 			{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
 			{ { -1.0f,  1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
@@ -475,7 +483,7 @@ public:
 			vkCmdCopyBuffer(copyCmd, stagingBuffers.vertices.buffer, vertices.buffer, 1, &copyRegion);
 			// Index buffer
 			copyRegion.size = indexBufferSize;
-			vkCmdCopyBuffer(copyCmd, stagingBuffers.indices.buffer, indices.buffer,	1, &copyRegion);
+			vkCmdCopyBuffer(copyCmd, stagingBuffers.indices.buffer, indices.buffer, 1, &copyRegion);
 
 			// Flushing the command buffer will also submit it to the queue and uses a fence to ensure that all commands have been executed before returning
 			flushCommandBuffer(copyCmd);
@@ -669,7 +677,7 @@ public:
 		frameBuffers.resize(swapChain.imageCount);
 		for (size_t i = 0; i < frameBuffers.size(); i++)
 		{
-			std::array<VkImageView, 2> attachments;										
+			std::array<VkImageView, 2> attachments;
 			attachments[0] = swapChain.buffers[i].view;									// Color attachment is the view of the swapchain image			
 			attachments[1] = depthStencil.view;											// Depth/Stencil attachment is the same for all frame buffers			
 
@@ -711,7 +719,7 @@ public:
 																						// As we want to present the color buffer to the swapchain, we transition to PRESENT_KHR	
 		// Depth attachment
 		attachments[1].format = depthFormat;											// A proper depth format is selected in the example base
-		attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;						
+		attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
 		attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;							// Clear depth at start of first subpass
 		attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;						// We don't need depth after render pass has finished (DONT_CARE may result in better performance)
 		attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;					// No stencil
@@ -730,7 +738,7 @@ public:
 
 		// Setup a single subpass reference
 		VkSubpassDescription subpassDescription = {};
-		subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;			
+		subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		subpassDescription.colorAttachmentCount = 1;									// Subpass uses one color attachment
 		subpassDescription.pColorAttachments = &colorReference;							// Reference to the color attachment in slot 0
 		subpassDescription.pDepthStencilAttachment = &depthReference;					// Reference to the depth attachment in slot 1
@@ -752,8 +760,8 @@ public:
 		// Does the transition from final to initial layout 
 		dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;								// Producer of the dependency 
 		dependencies[0].dstSubpass = 0;													// Consumer is our single subpass that will wait for the execution depdendency
-		dependencies[0].srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;			
-		dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;	
+		dependencies[0].srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+		dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		dependencies[0].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
 		dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
@@ -762,7 +770,7 @@ public:
 		// Does the transition from the initial to the final layout
 		dependencies[1].srcSubpass = 0;													// Producer of the dependency is our single subpass
 		dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;								// Consumer are all commands outside of the renderpass
-		dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;	
+		dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		dependencies[1].dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 		dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		dependencies[1].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
@@ -1049,7 +1057,7 @@ public:
 		VK_CHECK_RESULT(vkAllocateMemory(device, &allocInfo, nullptr, &(uniformBufferVS.memory)));
 		// Bind memory to buffer
 		VK_CHECK_RESULT(vkBindBufferMemory(device, uniformBufferVS.buffer, uniformBufferVS.memory, 0));
-		
+
 		// Store information in the uniform's descriptor that is used by the descriptor set
 		uniformBufferVS.descriptor.buffer = uniformBufferVS.buffer;
 		uniformBufferVS.descriptor.offset = 0;
@@ -1089,7 +1097,6 @@ public:
 		preparePipelines();
 		setupDescriptorPool();
 		setupDescriptorSet();
-		buildCommandBuffers();
 		prepared = true;
 	}
 
