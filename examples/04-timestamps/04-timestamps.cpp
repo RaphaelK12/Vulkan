@@ -112,6 +112,15 @@ public:
 	// Used to check the completion of queue operations (e.g. command buffer execution)
 	std::vector<VkFence> waitFences;
 
+	enum timestamp
+	{
+		TIMESTAMP_TOP,
+		TIMESTAMP_BOTTOM,
+		TIMESTAMP_MAX
+	};
+
+	VkQueryPool timestampPool[TIMESTAMP_MAX];
+
 	VulkanExample() : VulkanExampleBase(ENABLE_VALIDATION)
 	{
 		zoom = -2.5f;
@@ -121,6 +130,9 @@ public:
 
 	~VulkanExample()
 	{
+		vkDestroyQueryPool(this->device, this->timestampPool[TIMESTAMP_BOTTOM], NULL);
+		vkDestroyQueryPool(this->device, this->timestampPool[TIMESTAMP_TOP], NULL);
+
 		// Clean up used Vulkan resources 
 		// Note: Inherited destructor cleans up resources stored in base class
 		vkDestroyPipeline(device, pipeline, nullptr);
@@ -285,6 +297,9 @@ public:
 
 		VK_CHECK_RESULT(vkBeginCommandBuffer(drawCmdBuffers[currentBuffer], &cmdBufInfo));
 
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestampPool[TIMESTAMP_TOP], currentBuffer);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestampPool[TIMESTAMP_BOTTOM], currentBuffer);
+
 		// Start the first sub pass specified in our default render pass setup by the base class
 		// This will clear the color and depth attachment
 		vkCmdBeginRenderPass(drawCmdBuffers[currentBuffer], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
@@ -338,6 +353,14 @@ public:
 		// Use a fence to wait until the command buffer has finished execution before using it again
 		VK_CHECK_RESULT(vkWaitForFences(device, 1, &waitFences[currentBuffer], VK_TRUE, UINT64_MAX));
 		VK_CHECK_RESULT(vkResetFences(device, 1, &waitFences[currentBuffer]));
+
+		std::uint64_t timestampTop = 0;
+		VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_TOP], currentBuffer, 1, sizeof(std::uint64_t), &timestampTop, 0, VK_QUERY_RESULT_64_BIT));
+		std::uint64_t timestampBottom = 0;
+		VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_BOTTOM], currentBuffer, 1, sizeof(std::uint64_t), &timestampBottom, 0, VK_QUERY_RESULT_64_BIT));
+
+		double const timestampPeriodNS = this->deviceProperties.limits.timestampPeriod;
+		printf("\rGPU frame time: %f ms", double(timestampBottom - timestampTop) / timestampPeriodNS / 1000.0 / 1000.0);
 
 		buildCommandBuffers(currentBuffer);
 
@@ -1097,6 +1120,18 @@ public:
 		preparePipelines();
 		setupDescriptorPool();
 		setupDescriptorSet();
+
+		VkQueryPoolCreateInfo queryPoolCreateInfo;
+		queryPoolCreateInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+		queryPoolCreateInfo.pNext = nullptr;
+		queryPoolCreateInfo.flags = 0;
+		queryPoolCreateInfo.pipelineStatistics = 0;
+		queryPoolCreateInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+		queryPoolCreateInfo.queryCount = drawCmdBuffers.size();
+
+		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPool[TIMESTAMP_TOP]));
+		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPool[TIMESTAMP_BOTTOM]));
+
 		prepared = true;
 	}
 
