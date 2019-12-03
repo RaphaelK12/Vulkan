@@ -119,7 +119,7 @@ public:
 		TIMESTAMP_MAX
 	};
 
-	VkQueryPool timestampPool[TIMESTAMP_MAX];
+	VkQueryPool timestampPool;
 
 	VulkanExample() : VulkanExampleBase(ENABLE_VALIDATION)
 	{
@@ -130,8 +130,7 @@ public:
 
 	~VulkanExample()
 	{
-		vkDestroyQueryPool(this->device, this->timestampPool[TIMESTAMP_BOTTOM], NULL);
-		vkDestroyQueryPool(this->device, this->timestampPool[TIMESTAMP_TOP], NULL);
+		vkDestroyQueryPool(this->device, this->timestampPool, NULL);
 
 		// Clean up used Vulkan resources 
 		// Note: Inherited destructor cleans up resources stored in base class
@@ -280,8 +279,8 @@ public:
 
 		VK_CHECK_RESULT(vkBeginCommandBuffer(drawCmdBuffers[currentBuffer], &cmdBufInfo));
 
-		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestampPool[TIMESTAMP_TOP], currentBuffer);
-		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestampPool[TIMESTAMP_BOTTOM], currentBuffer);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, this->timestampPool, currentBuffer * 2 + 0);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, this->timestampPool, currentBuffer * 2 + 1);
 
 
 		VkRenderPassBeginInfo renderPassBeginInfo = {};
@@ -405,55 +404,21 @@ public:
 		VK_CHECK_RESULT(swapChain.queuePresent(queue, currentBuffer, renderCompleteSemaphore));
 
 
-		//VkResult result = vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * 2, 2, 0, nullptr, 0, 0);
 
 
-		std::uint64_t timestampTop = 0;
-		VkResult resultTop = vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_TOP], currentBuffer, 1, sizeof(std::uint64_t), &timestampTop, 0, VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+		VkResult result = vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * 2, 2, 0, nullptr, 0, 0);
 
-		std::uint64_t timestampBottom = 0;
-		VkResult resultBottom = vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_BOTTOM], currentBuffer, 1, sizeof(std::uint64_t), &timestampBottom, 0, VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
-
-		if (resultTop == VK_SUCCESS && resultBottom == VK_SUCCESS)
+		if (result == VK_SUCCESS)
 		{
-			std::uint64_t timestampTop = 0;
-			VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_TOP], currentBuffer, 1, sizeof(std::uint64_t), &timestampTop, 0, VK_QUERY_RESULT_64_BIT));
-			std::uint64_t timestampBottom = 0;
-			VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_BOTTOM], currentBuffer, 1, sizeof(std::uint64_t), &timestampBottom, 0, VK_QUERY_RESULT_64_BIT));
+			std::uint64_t timestamp[2]{0, 0};
+			VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * 2, 2, sizeof(timestamp), &timestamp, 0, VK_QUERY_RESULT_64_BIT));
 
-			printf("\rGPU frame time: %2.8f ms", GetTimeMS(timestampTop, timestampBottom));
+			printf("\rGPU frame time: %2.5f ms", GetTimeMS(timestamp[0], timestamp[1]));
 		}
 		else
 		{
-			printf("\rGPU frame time: Not available");
+			printf("\rGPU frame time: Not ready");
 		}
-
-
-
-
-/*
-		std::uint64_t timestampTop = 0;
-		VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_TOP], currentBuffer, 1, sizeof(std::uint64_t), &timestampTop, 0, VK_QUERY_RESULT_WITH_AVAILABILITY_BIT));
-
-		std::uint64_t timestampBottom = 0;
-		VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_BOTTOM], currentBuffer, 1, sizeof(std::uint64_t), &timestampBottom, 0, VK_QUERY_RESULT_WITH_AVAILABILITY_BIT));
-
-		if (timestampTop > 0 && timestampBottom > 0)
-		{
-			std::uint64_t timestampTop = 0;
-			VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_TOP], currentBuffer, 1, sizeof(std::uint64_t), &timestampTop, 0, VK_QUERY_RESULT_64_BIT));
-			std::uint64_t timestampBottom = 0;
-			VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_BOTTOM], currentBuffer, 1, sizeof(std::uint64_t), &timestampBottom, 0, VK_QUERY_RESULT_64_BIT));
-
-			printf("\rGPU frame time: %2.5f ms", GetTimeMS(timestampTop, timestampBottom));
-		}
-		else
-		{
-			printf("\rGPU frame time: Not available");
-		}
-*/
-
-
 
 
 
@@ -1205,10 +1170,9 @@ public:
 		queryPoolCreateInfo.flags = 0;
 		queryPoolCreateInfo.pipelineStatistics = 0;
 		queryPoolCreateInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
-		queryPoolCreateInfo.queryCount = static_cast<std::uint32_t>(drawCmdBuffers.size());
+		queryPoolCreateInfo.queryCount = static_cast<std::uint32_t>(drawCmdBuffers.size()) * 2;
 
-		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPool[TIMESTAMP_TOP]));
-		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPool[TIMESTAMP_BOTTOM]));
+		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPool));
 
 		prepared = true;
 	}
