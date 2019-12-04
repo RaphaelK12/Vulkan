@@ -1,7 +1,7 @@
 /*
 * Vulkan Example base class
 *
-* Copyright (C) 2016-2017 by Sascha Willems - www.saschawillems.de
+* Copyright (C) by Sascha Willems - www.saschawillems.de
 *
 * This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
 */
@@ -58,15 +58,34 @@ VkResult VulkanExampleBase::createInstance(bool enableValidation)
 	{
 		if (settings.validation)
 		{
-			instanceExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+			instanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 		}
 		instanceCreateInfo.enabledExtensionCount = (uint32_t)instanceExtensions.size();
 		instanceCreateInfo.ppEnabledExtensionNames = instanceExtensions.data();
 	}
 	if (settings.validation)
 	{
-		instanceCreateInfo.enabledLayerCount = vks::debug::validationLayerCount;
-		instanceCreateInfo.ppEnabledLayerNames = vks::debug::validationLayerNames;
+		// The VK_LAYER_KHRONOS_validation contains all current validation functionality.
+		// Note that on Android this layer requires at least NDK r20 
+		const char* validationLayerName = "VK_LAYER_KHRONOS_validation";
+		// Check if this layer is available at instance level
+		uint32_t instanceLayerCount;
+		vkEnumerateInstanceLayerProperties(&instanceLayerCount, nullptr);
+		std::vector<VkLayerProperties> instanceLayerProperties(instanceLayerCount);
+		vkEnumerateInstanceLayerProperties(&instanceLayerCount, instanceLayerProperties.data());
+		bool validationLayerPresent = false;
+		for (VkLayerProperties layer : instanceLayerProperties) {
+			if (strcmp(layer.layerName, validationLayerName) == 0) {
+				validationLayerPresent = true;
+				break;
+			}
+		}
+		if (validationLayerPresent) {
+			instanceCreateInfo.ppEnabledLayerNames = &validationLayerName;
+			instanceCreateInfo.enabledLayerCount = 1;
+		} else {
+			std::cerr << "Validation layer VK_LAYER_KHRONOS_validation not present, validation is disabled";
+		}
 	}
 	return vkCreateInstance(&instanceCreateInfo, nullptr, &instance);
 }
@@ -250,7 +269,7 @@ void VulkanExampleBase::renderFrame()
 			timer -= 1.0f;
 		}
 	}
-	float fpsTimer = std::chrono::duration<double, std::milli>(tEnd - lastTimestamp).count();
+	float fpsTimer = (float)(std::chrono::duration<double, std::milli>(tEnd - lastTimestamp).count());
 	if (fpsTimer > 1000.0f)
 	{
 		lastFPS = static_cast<uint32_t>((float)frameCounter * (1000.0f / fpsTimer));
@@ -621,26 +640,26 @@ void VulkanExampleBase::drawUI(const VkCommandBuffer commandBuffer)
 void VulkanExampleBase::prepareFrame()
 {
 	// Acquire the next image from the swap chain
-	VkResult err = swapChain.acquireNextImage(semaphores.presentComplete, &currentBuffer);
+	VkResult result = swapChain.acquireNextImage(semaphores.presentComplete, &currentBuffer);
 	// Recreate the swapchain if it's no longer compatible with the surface (OUT_OF_DATE) or no longer optimal for presentation (SUBOPTIMAL)
-	if ((err == VK_ERROR_OUT_OF_DATE_KHR) || (err == VK_SUBOPTIMAL_KHR)) {
+	if ((result == VK_ERROR_OUT_OF_DATE_KHR) || (result == VK_SUBOPTIMAL_KHR)) {
 		windowResize();
 	}
 	else {
-		VK_CHECK_RESULT(err);
+		VK_CHECK_RESULT(result);
 	}
 }
 
 void VulkanExampleBase::submitFrame()
 {
-	VkResult res = swapChain.queuePresent(queue, currentBuffer, semaphores.renderComplete);
-	if (!((res == VK_SUCCESS) || (res == VK_SUBOPTIMAL_KHR))) {
-		if (res == VK_ERROR_OUT_OF_DATE_KHR) {
+	VkResult result = swapChain.queuePresent(queue, currentBuffer, semaphores.renderComplete);
+	if (!((result == VK_SUCCESS) || (result == VK_SUBOPTIMAL_KHR))) {
+		if (result == VK_ERROR_OUT_OF_DATE_KHR) {
 			// Swap chain is no longer compatible with the surface and needs to be recreated
 			windowResize();
 			return;
 		} else {
-			VK_CHECK_RESULT(res);
+			VK_CHECK_RESULT(result);
 		}
 	}
 	VK_CHECK_RESULT(vkQueueWaitIdle(queue));
@@ -931,7 +950,7 @@ bool VulkanExampleBase::initVulkan()
 	// This is handled by a separate class that gets a logical device representation
 	// and encapsulates functions related to a device
 	vulkanDevice = new vks::VulkanDevice(physicalDevice);
-	VkResult res = vulkanDevice->createLogicalDevice(enabledFeatures, enabledDeviceExtensions);
+	VkResult res = vulkanDevice->createLogicalDevice(enabledFeatures, enabledDeviceExtensions, deviceCreatepNextChain);
 	if (res != VK_SUCCESS) {
 		vks::tools::exitFatal("Could not create Vulkan device: \n" + vks::tools::errorString(res), res);
 		return false;

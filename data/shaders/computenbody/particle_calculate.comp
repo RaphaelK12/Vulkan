@@ -18,8 +18,6 @@ layout (local_size_x = 256) in;
 layout (binding = 1) uniform UBO 
 {
 	float deltaT;
-	float destX;
-	float destY;
 	int particleCount;
 } ubo;
 
@@ -62,6 +60,9 @@ void main()
 			vec3 len = other.xyz - position.xyz;
 			acceleration.xyz += GRAVITY * len * other.w / pow(dot(len, len) + SOFTEN, POWER);
 		}
+
+		memoryBarrierShared();
+		barrier();
 	}
 
 	particles[index].vel.xyz += ubo.deltaT * acceleration.xyz;

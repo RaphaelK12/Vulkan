@@ -3,7 +3,7 @@
 *
 * Encapsulates a physical Vulkan device and it's logical representation
 *
-* Copyright (C) 2016-2017 by Sascha Willems - www.saschawillems.de
+* Copyright (C) by Sascha Willems - www.saschawillems.de
 *
 * This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
 */
@@ -208,12 +208,13 @@ namespace vks
 		* Create the logical device based on the assigned physical device, also gets default queue family indices
 		*
 		* @param enabledFeatures Can be used to enable certain features upon device creation
+		* @param pNextChain Optional chain of pointer to extension structures
 		* @param useSwapChain Set to false for headless rendering to omit the swapchain device extensions
 		* @param requestedQueueTypes Bit flags specifying the queue types to be requested from the device  
 		*
 		* @return VkResult of the device creation call
 		*/
-		VkResult createLogicalDevice(VkPhysicalDeviceFeatures enabledFeatures, std::vector<const char*> enabledExtensions, bool useSwapChain = true, VkQueueFlags requestedQueueTypes = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)
+		VkResult createLogicalDevice(VkPhysicalDeviceFeatures enabledFeatures, std::vector<const char*> enabledExtensions, void* pNextChain, bool useSwapChain = true, VkQueueFlags requestedQueueTypes = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)
 		{			
 			// Desired queues need to be requested upon logical device creation
 			// Due to differing queue family configurations of Vulkan implementations this can be a bit tricky, especially if the application
@@ -297,6 +298,16 @@ namespace vks
 			deviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());;
 			deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
 			deviceCreateInfo.pEnabledFeatures = &enabledFeatures;
+		
+			// If a pNext(Chain) has been passed, we need to add it to the device creation info
+			if (pNextChain) {
+				VkPhysicalDeviceFeatures2 physicalDeviceFeatures2{};
+				physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+				physicalDeviceFeatures2.features = enabledFeatures;
+				physicalDeviceFeatures2.pNext = pNextChain;
+				deviceCreateInfo.pEnabledFeatures = nullptr;
+				deviceCreateInfo.pNext = &physicalDeviceFeatures2;
+			}
 
 			// Enable the debug marker extension if it is present (likely meaning a debugging tool is present)
 			if (extensionSupported(VK_EXT_DEBUG_MARKER_EXTENSION_NAME))
@@ -554,6 +565,37 @@ namespace vks
 		bool extensionSupported(std::string extension)
 		{
 			return (std::find(supportedExtensions.begin(), supportedExtensions.end(), extension) != supportedExtensions.end());
+		}
+
+		/**
+		* Select the best-fit depth format for this device from a list of possible depth (and stencil) formats
+		*
+		* @param checkSamplingSupport Check if the format can be sampled from (e.g. for shader reads)
+		*
+		* @return The depth format that best fits for the current device
+		*
+		* @throw Throws an exception if no depth format fits the requirements
+		*/
+		VkFormat getSupportedDepthFormat(bool checkSamplingSupport)
+		{
+			// All depth formats may be optional, so we need to find a suitable depth format to use
+			std::vector<VkFormat> depthFormats = { VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D16_UNORM_S8_UINT, VK_FORMAT_D16_UNORM };
+			for (auto& format : depthFormats)
+			{
+				VkFormatProperties formatProperties;
+				vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &formatProperties);
+				// Format must support depth stencil attachment for optimal tiling
+				if (formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
+				{
+					if (checkSamplingSupport) {
+						if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
+							continue;
+						}
+					}
+					return format;
+				}
+			}
+			throw std::runtime_error("Could not find a matching depth format");
 		}
 
 	};

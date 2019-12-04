@@ -183,6 +183,7 @@ public:
 
 		VkAccelerationStructureMemoryRequirementsInfoNV memoryRequirementsInfo{};
 		memoryRequirementsInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_NV;
+		memoryRequirementsInfo.type = VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_NV;
 		memoryRequirementsInfo.accelerationStructure = bottomLevelAS.accelerationStructure;
 
 		VkMemoryRequirements2 memoryRequirements2{};
@@ -220,6 +221,7 @@ public:
 
 		VkAccelerationStructureMemoryRequirementsInfoNV memoryRequirementsInfo{};
 		memoryRequirementsInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_NV;
+		memoryRequirementsInfo.type = VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_NV;
 		memoryRequirementsInfo.accelerationStructure = topLevelAS.accelerationStructure;
 
 		VkMemoryRequirements2 memoryRequirements2{};
@@ -244,14 +246,14 @@ public:
 	*/
 	void createScene()
 	{
-		// Setup vertices for a single uv-mapped quad made from two triangles
+		// Setup vertices for a single triangle
 		struct Vertex {
-			float pos[4];
+			float pos[3];
 		};
 		std::vector<Vertex> vertices = {
-			{ {  1.0f,  1.0f, 0.0f, 1.0f } },
-			{ { -1.0f,  1.0f, 0.0f, 1.0f } },
-			{ {  0.0f, -1.0f, 0.0f, 1.0f } }
+			{ {  1.0f,  1.0f, 0.0f } },
+			{ { -1.0f,  1.0f, 0.0f } },
+			{ {  0.0f, -1.0f, 0.0f } }
 		};
 
 		// Setup indices
@@ -286,7 +288,7 @@ public:
 		geometry.geometry.triangles.vertexOffset = 0;
 		geometry.geometry.triangles.vertexCount = static_cast<uint32_t>(vertices.size());
 		geometry.geometry.triangles.vertexStride = sizeof(Vertex);
-		geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
+		geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
 		geometry.geometry.triangles.indexData = indexBuffer.buffer;
 		geometry.geometry.triangles.indexOffset = 0;
 		geometry.geometry.triangles.indexCount = indexCount;
@@ -336,7 +338,7 @@ public:
 		// Acceleration structure build requires some scratch space to store temporary information
 		VkAccelerationStructureMemoryRequirementsInfoNV memoryRequirementsInfo{};
 		memoryRequirementsInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_NV;
-		memoryRequirementsInfo.type = VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_NV;
+		memoryRequirementsInfo.type = VK_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_NV;
 
 		VkMemoryRequirements2 memReqBottomLevelAS;
 		memoryRequirementsInfo.accelerationStructure = bottomLevelAS.accelerationStructure;
@@ -385,6 +387,7 @@ public:
 		/*
 			Build top-level acceleration structure
 		*/
+		buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_NV;
 		buildInfo.pGeometries = 0;
 		buildInfo.geometryCount = 0;
 		buildInfo.instanceCount = 1;
