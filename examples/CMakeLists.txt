@@ -49,6 +49,7 @@ set(EXAMPLES
 	03-command-buffer-one-time
 	04-timestamps
 	05-timestamps-batch
+	06-timestamps-stages
 	07-shader-push-constants
 	bloom
 	computecloth

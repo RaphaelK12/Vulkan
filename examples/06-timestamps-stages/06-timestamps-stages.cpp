@@ -115,6 +115,12 @@ public:
 	enum timestamp
 	{
 		TIMESTAMP_TOP,
+		TIMESTAMP_VERTEX_INPUT,
+		TIMESTAMP_VERTEX_SHADER,
+		TIMESTAMP_FRAGMENT_SHADER,
+		TIMESTAMP_EARLY_FRAGMENT_TESTS,
+		TIMESTAMP_LATE_FRAGMENT_TESTS,
+		TIMESTAMP_COLOR_ATTACHMENT_OUTPUT,
 		TIMESTAMP_BOTTOM,
 		TIMESTAMP_MAX
 	};
@@ -279,8 +285,14 @@ public:
 
 		VK_CHECK_RESULT(vkBeginCommandBuffer(drawCmdBuffers[currentBuffer], &cmdBufInfo));
 
-		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, this->timestampPool, currentBuffer * 2 + 0);
-		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, this->timestampPool, currentBuffer * 2 + 1);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_TOP);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_VERTEX_INPUT);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_VERTEX_SHADER);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_FRAGMENT_SHADER);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_EARLY_FRAGMENT_TESTS);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_LATE_FRAGMENT_TESTS);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_COLOR_ATTACHMENT_OUTPUT);
+		vkCmdWriteTimestamp(drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_BOTTOM);
 
 
 		VkRenderPassBeginInfo renderPassBeginInfo = {};
@@ -356,10 +368,7 @@ public:
 		VK_CHECK_RESULT(vkResetFences(device, 1, &waitFences[currentBuffer]));
 
 
-
-
 		buildCommandBuffers(currentBuffer);
-
 
 
 
@@ -380,22 +389,6 @@ public:
 		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, waitFences[currentBuffer]));
 
 
-/*
-		std::uint32_t timestampTopAvailable = 0;
-		VkResult timestampTopResult = vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_TOP], currentBuffer, 1, sizeof(std::uint64_t), &timestampTopAvailable, 0, VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
-
-		std::uint32_t timestampBottomAvailable = 0;
-		VkResult timestampBottomResult = vkGetQueryPoolResults(this->device, this->timestampPool[TIMESTAMP_BOTTOM], currentBuffer, 1, sizeof(std::uint64_t), &timestampBottomAvailable, 0, VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
-
-		if(timestampTopResult == VK_NOT_READY)
-			assert(timestampTopAvailable == 0);
-
-		if (timestampBottomResult == VK_NOT_READY)
-			assert(timestampTopAvailable == 0);
-
-		if(timestampTopAvailable == 0 || timestampBottomAvailable == 0)
-			printf("\rGPU frame time: Not available\n");
-*/
 
 
 		// Present the current buffer to the swap chain
@@ -406,14 +399,21 @@ public:
 
 
 
-		std::uint64_t timestamp[2]{ 0, 0 }; // Not really useful but  
-		VkResult result = vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * 2, 2, sizeof(timestamp), &timestamp, 0, VK_QUERY_RESULT_64_BIT);
+		std::uint64_t timestamp[TIMESTAMP_MAX]; // Not really useful but  
+		VkResult result = vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * TIMESTAMP_MAX, TIMESTAMP_MAX, sizeof(timestamp), &timestamp, 0, VK_QUERY_RESULT_64_BIT);
 
 		if (result != VK_NOT_READY)
 		{
-			VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * 2, 2, sizeof(timestamp), &timestamp, 0, VK_QUERY_RESULT_64_BIT));
+			VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * TIMESTAMP_MAX, TIMESTAMP_MAX, sizeof(timestamp), &timestamp, 0, VK_QUERY_RESULT_64_BIT));
 
-			printf("\rGPU frame time: %2.5f ms", GetTimeMS(timestamp[0], timestamp[1]));
+			printf("\rGPU total: %2.5f ms; input: %2.5f ms; vertex: %2.5f ms; frag: %2.5f ms; early: %2.5f ms; late: %2.5f ms; write: %2.5f ms",
+				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_BOTTOM]),
+				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_VERTEX_INPUT]),
+				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_VERTEX_SHADER]),
+				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_FRAGMENT_SHADER]),
+				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_EARLY_FRAGMENT_TESTS]),
+				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_LATE_FRAGMENT_TESTS]),
+				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_COLOR_ATTACHMENT_OUTPUT]));
 		}
 		else
 		{
@@ -1159,7 +1159,7 @@ public:
 		queryPoolCreateInfo.flags = 0;
 		queryPoolCreateInfo.pipelineStatistics = 0;
 		queryPoolCreateInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
-		queryPoolCreateInfo.queryCount = static_cast<std::uint32_t>(drawCmdBuffers.size()) * 2;
+		queryPoolCreateInfo.queryCount = static_cast<std::uint32_t>(drawCmdBuffers.size()) * TIMESTAMP_MAX;
 
 		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPool));
 
