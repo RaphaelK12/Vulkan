@@ -50,6 +50,7 @@ set(EXAMPLES
 	04-timestamps
 	05-timestamps-batch
 	06-timestamps-stages
+	07-timestamps-frame
 	07-shader-push-constants
 	bloom
 	computecloth

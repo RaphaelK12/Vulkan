@@ -126,8 +126,7 @@ public:
 	};
 
 	VkQueryPool timestampPool;
-
-	std::vector<VkCommandBuffer> timestampCommandBuffers;
+	std::vector<std::array<std::uint64_t, TIMESTAMP_MAX> > timestamp;
 
 	VulkanExample() : VulkanExampleBase(ENABLE_VALIDATION)
 	{
@@ -138,8 +137,6 @@ public:
 
 	~VulkanExample()
 	{
-		vkFreeCommandBuffers(this->device, this->cmdPool, this->timestampCommandBuffers.size(), &this->timestampCommandBuffers[0]);
-
 		vkDestroyQueryPool(this->device, this->timestampPool, NULL);
 
 		// Clean up used Vulkan resources 
@@ -214,6 +211,8 @@ public:
 		{
 			VK_CHECK_RESULT(vkCreateFence(device, &fenceCreateInfo, nullptr, &fence));
 		}
+
+		timestamp.resize(drawCmdBuffers.size());
 	}
 
 	// Get a new command buffer from the command pool
@@ -339,33 +338,24 @@ public:
 
 		vkCmdEndRenderPass(drawCmdBuffers[currentBuffer]);
 
+
+
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_TOP);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_VERTEX_INPUT);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_VERTEX_SHADER);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_FRAGMENT_SHADER);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_EARLY_FRAGMENT_TESTS);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_LATE_FRAGMENT_TESTS);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_COLOR_ATTACHMENT_OUTPUT);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_BOTTOM);
+
+
+
+
 		// Ending the render pass will add an implicit barrier transitioning the frame buffer color attachment to 
 		// VK_IMAGE_LAYOUT_PRESENT_SRC_KHR for presenting it to the windowing system
 
 		VK_CHECK_RESULT(vkEndCommandBuffer(drawCmdBuffers[currentBuffer]));
-
-
-
-
-		VK_CHECK_RESULT(vkResetCommandBuffer(this->timestampCommandBuffers[currentBuffer], VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));
-
-		VkCommandBufferBeginInfo timestampCommandBuffersInfo = {};
-		timestampCommandBuffersInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		timestampCommandBuffersInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-		timestampCommandBuffersInfo.pNext = nullptr;
-
-		VK_CHECK_RESULT(vkBeginCommandBuffer(this->timestampCommandBuffers[currentBuffer], &timestampCommandBuffersInfo));
-
-		vkCmdWriteTimestamp(this->timestampCommandBuffers[currentBuffer], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_TOP);
-		vkCmdWriteTimestamp(this->timestampCommandBuffers[currentBuffer], VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_VERTEX_INPUT);
-		vkCmdWriteTimestamp(this->timestampCommandBuffers[currentBuffer], VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_VERTEX_SHADER);
-		vkCmdWriteTimestamp(this->timestampCommandBuffers[currentBuffer], VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_FRAGMENT_SHADER);
-		vkCmdWriteTimestamp(this->timestampCommandBuffers[currentBuffer], VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_EARLY_FRAGMENT_TESTS);
-		vkCmdWriteTimestamp(this->timestampCommandBuffers[currentBuffer], VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_LATE_FRAGMENT_TESTS);
-		vkCmdWriteTimestamp(this->timestampCommandBuffers[currentBuffer], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_COLOR_ATTACHMENT_OUTPUT);
-		vkCmdWriteTimestamp(this->timestampCommandBuffers[currentBuffer], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_BOTTOM);
-
-		VK_CHECK_RESULT(vkEndCommandBuffer(this->timestampCommandBuffers[currentBuffer]));
 	}
 
 	double GetTimeMS(std::uint64_t Top, std::uint64_t Current) const
@@ -387,7 +377,6 @@ public:
 		buildCommandBuffers(currentBuffer);
 
 
-		VkCommandBuffer const CommandBuffers[2] = { this->drawCmdBuffers[currentBuffer], this->timestampCommandBuffers[currentBuffer] };
 
 
 		// Pipeline stage at which the queue submission will wait (via pWaitSemaphores)
@@ -401,8 +390,8 @@ public:
 		submitInfo.waitSemaphoreCount = 1;												// One wait semaphore																				
 		submitInfo.pSignalSemaphores = &renderCompleteSemaphore;						// Semaphore(s) to be signaled when command buffers have completed
 		submitInfo.signalSemaphoreCount = 1;											// One signal semaphore
-		submitInfo.pCommandBuffers = CommandBuffers;									// Command buffers(s) to execute in this batch (submission)
-		submitInfo.commandBufferCount = 2;												// One command buffer
+		submitInfo.pCommandBuffers = &this->drawCmdBuffers[currentBuffer];									// Command buffers(s) to execute in this batch (submission)
+		submitInfo.commandBufferCount = 1;												// One command buffer
 
 		// Submit to the graphics queue passing a wait fence
 		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, waitFences[currentBuffer]));
@@ -418,22 +407,24 @@ public:
 
 
 
-		std::uint64_t timestamp[TIMESTAMP_MAX]; // Not really useful but  
-		VkResult result = vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * TIMESTAMP_MAX, TIMESTAMP_MAX, sizeof(timestamp), &timestamp, sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT);
+		VkResult result = vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * TIMESTAMP_MAX, TIMESTAMP_MAX, sizeof(this->timestamp[currentBuffer]), &this->timestamp[currentBuffer], sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT);
 
 		if (result != VK_NOT_READY)
 		{
-			VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * TIMESTAMP_MAX, TIMESTAMP_MAX, sizeof(timestamp), &timestamp, sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT));
+			VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * TIMESTAMP_MAX, TIMESTAMP_MAX, sizeof(this->timestamp[currentBuffer]), &this->timestamp[currentBuffer], sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT));
 
-			printf("\rTotal: %2.4fms (%2.0ffps); input: %2.4fms; vert: %2.4fms; frag: %2.4fms; early: %2.4fms; late: %2.4fms; write: %2.4fms",
-				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_BOTTOM]),
-				1.0 / GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_BOTTOM]),
-				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_VERTEX_INPUT]),
-				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_VERTEX_SHADER]),
-				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_FRAGMENT_SHADER]),
-				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_EARLY_FRAGMENT_TESTS]),
-				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_LATE_FRAGMENT_TESTS]),
-				GetTimeMS(timestamp[TIMESTAMP_TOP], timestamp[TIMESTAMP_COLOR_ATTACHMENT_OUTPUT]));
+			uint32_t prevBuffer = (currentBuffer - 1) % this->timestamp.size();
+
+			printf("\rbottom: %2.4fms (%2.0ffps); input: %2.4fms; vert: %2.4fms; frag: %2.4fms; early: %2.4fms; late: %2.4fms; write: %2.4fms; top: %2.4fms",
+				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_BOTTOM], timestamp[currentBuffer][TIMESTAMP_BOTTOM]),
+				1000.0 / GetTimeMS(timestamp[prevBuffer][TIMESTAMP_BOTTOM], timestamp[currentBuffer][TIMESTAMP_BOTTOM]),
+				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_VERTEX_INPUT], timestamp[currentBuffer][TIMESTAMP_VERTEX_INPUT]),
+				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_VERTEX_SHADER], timestamp[currentBuffer][TIMESTAMP_VERTEX_SHADER]),
+				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_FRAGMENT_SHADER], timestamp[currentBuffer][TIMESTAMP_FRAGMENT_SHADER]),
+				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_EARLY_FRAGMENT_TESTS], timestamp[currentBuffer][TIMESTAMP_EARLY_FRAGMENT_TESTS]),
+				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_LATE_FRAGMENT_TESTS], timestamp[currentBuffer][TIMESTAMP_LATE_FRAGMENT_TESTS]),
+				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_COLOR_ATTACHMENT_OUTPUT], timestamp[currentBuffer][TIMESTAMP_COLOR_ATTACHMENT_OUTPUT]),
+				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_TOP], timestamp[currentBuffer][TIMESTAMP_TOP]));
 		}
 		else
 		{
@@ -1185,15 +1176,6 @@ public:
 
 
 
-		this->timestampCommandBuffers.resize(this->drawCmdBuffers.size());
-
-		VkCommandBufferAllocateInfo timestampCommandBuffersAllocateInfo = {};
-		timestampCommandBuffersAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		timestampCommandBuffersAllocateInfo.commandPool = cmdPool;
-		timestampCommandBuffersAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		timestampCommandBuffersAllocateInfo.commandBufferCount = static_cast<std::uint32_t>(this->timestampCommandBuffers.size());
-
-		VK_CHECK_RESULT(vkAllocateCommandBuffers(this->device, &timestampCommandBuffersAllocateInfo, &this->timestampCommandBuffers[0]));
 
 		prepared = true;
 	}
