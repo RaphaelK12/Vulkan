@@ -406,11 +406,11 @@ public:
 
 
 
-		VkResult result = vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * 2, 2, 0, nullptr, 0, 0);
+		std::uint64_t timestamp[2]{ 0, 0 }; // Not really useful but  
+		VkResult result = vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * 2, 2, sizeof(timestamp), &timestamp, 0, VK_QUERY_RESULT_64_BIT);
 
-		if (result == VK_SUCCESS)
+		if (result != VK_NOT_READY)
 		{
-			std::uint64_t timestamp[2]{0, 0};
 			VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * 2, 2, sizeof(timestamp), &timestamp, 0, VK_QUERY_RESULT_64_BIT));
 
 			printf("\rGPU frame time: %2.5f ms", GetTimeMS(timestamp[0], timestamp[1]));
