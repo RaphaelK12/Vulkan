@@ -125,8 +125,11 @@ public:
 		TIMESTAMP_MAX
 	};
 
-	VkQueryPool timestampPool;
-	std::vector<std::array<std::uint64_t, TIMESTAMP_MAX> > timestamp;
+	VkQueryPool timestampPoolBegin;
+	std::vector<std::array<std::uint64_t, TIMESTAMP_MAX> > timestampBegin;
+
+	VkQueryPool timestampPoolEnd;
+	std::vector<std::array<std::uint64_t, TIMESTAMP_MAX> > timestampEnd;
 
 	VulkanExample() : VulkanExampleBase(ENABLE_VALIDATION)
 	{
@@ -137,7 +140,8 @@ public:
 
 	~VulkanExample()
 	{
-		vkDestroyQueryPool(this->device, this->timestampPool, NULL);
+		vkDestroyQueryPool(this->device, this->timestampPoolBegin, NULL);
+		vkDestroyQueryPool(this->device, this->timestampPoolEnd, NULL);
 
 		// Clean up used Vulkan resources 
 		// Note: Inherited destructor cleans up resources stored in base class
@@ -212,7 +216,8 @@ public:
 			VK_CHECK_RESULT(vkCreateFence(device, &fenceCreateInfo, nullptr, &fence));
 		}
 
-		timestamp.resize(drawCmdBuffers.size());
+		timestampBegin.resize(drawCmdBuffers.size());
+		timestampEnd.resize(drawCmdBuffers.size());
 	}
 
 	// Get a new command buffer from the command pool
@@ -282,6 +287,7 @@ public:
 
 		VK_CHECK_RESULT(vkBeginCommandBuffer(drawCmdBuffers[currentBuffer], &cmdBufInfo));
 
+
 		// Set clear values for all framebuffer attachments with loadOp set to clear
 		// We use two attachments (color and depth) that are cleared at the start of the subpass and as such we need to set clear values for both
 		VkClearValue clearValues[2];
@@ -334,20 +340,33 @@ public:
 		// Bind triangle index buffer
 		vkCmdBindIndexBuffer(drawCmdBuffers[currentBuffer], indices.buffer, 0, VK_INDEX_TYPE_UINT32);
 
+		vkCmdDrawIndexed(drawCmdBuffers[currentBuffer], indices.count, 1, 0, 0, 1);
+
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, this->timestampPoolBegin, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_TOP);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, this->timestampPoolBegin, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_VERTEX_INPUT);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, this->timestampPoolBegin, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_VERTEX_SHADER);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, this->timestampPoolBegin, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_FRAGMENT_SHADER);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, this->timestampPoolBegin, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_EARLY_FRAGMENT_TESTS);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, this->timestampPoolBegin, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_LATE_FRAGMENT_TESTS);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, this->timestampPoolBegin, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_COLOR_ATTACHMENT_OUTPUT);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, this->timestampPoolBegin, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_BOTTOM);
+
 		vkCmdDrawIndexed(drawCmdBuffers[currentBuffer], indices.count, 10000, 0, 0, 1);
+
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, this->timestampPoolEnd, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_TOP);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, this->timestampPoolEnd, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_VERTEX_INPUT);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, this->timestampPoolEnd, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_VERTEX_SHADER);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, this->timestampPoolEnd, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_FRAGMENT_SHADER);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, this->timestampPoolEnd, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_EARLY_FRAGMENT_TESTS);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, this->timestampPoolEnd, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_LATE_FRAGMENT_TESTS);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, this->timestampPoolEnd, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_COLOR_ATTACHMENT_OUTPUT);
+		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, this->timestampPoolEnd, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_BOTTOM);
+
+
+
 
 		vkCmdEndRenderPass(drawCmdBuffers[currentBuffer]);
 
-
-
-		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_TOP);
-		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_VERTEX_INPUT);
-		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_VERTEX_SHADER);
-		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_FRAGMENT_SHADER);
-		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_EARLY_FRAGMENT_TESTS);
-		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_LATE_FRAGMENT_TESTS);
-		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_COLOR_ATTACHMENT_OUTPUT);
-		vkCmdWriteTimestamp(this->drawCmdBuffers[currentBuffer], VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, this->timestampPool, currentBuffer * TIMESTAMP_MAX + TIMESTAMP_BOTTOM);
 
 
 
@@ -358,10 +377,10 @@ public:
 		VK_CHECK_RESULT(vkEndCommandBuffer(drawCmdBuffers[currentBuffer]));
 	}
 
-	double GetTimeMS(std::uint64_t Top, std::uint64_t Current) const
+	double GetTimeMS(std::uint64_t BeginTime, std::uint64_t EndTime) const
 	{
 		double const timestampPeriodNS = this->deviceProperties.limits.timestampPeriod;
-		return double(Current - Top) * timestampPeriodNS / 1000.0 / 1000.0;
+		return double(EndTime - BeginTime) * timestampPeriodNS / 1000.0 / 1000.0;
 	}
 
 	void draw()
@@ -407,24 +426,24 @@ public:
 
 
 
-		VkResult result = vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * TIMESTAMP_MAX, TIMESTAMP_MAX, sizeof(this->timestamp[currentBuffer]), &this->timestamp[currentBuffer], sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT);
+		VkResult resultBegin = vkGetQueryPoolResults(this->device, this->timestampPoolBegin, currentBuffer * TIMESTAMP_MAX, TIMESTAMP_MAX, sizeof(this->timestampBegin[currentBuffer]), &this->timestampBegin[currentBuffer], sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT);
+		VkResult resultEnd = vkGetQueryPoolResults(this->device, this->timestampPoolEnd, currentBuffer * TIMESTAMP_MAX, TIMESTAMP_MAX, sizeof(this->timestampEnd[currentBuffer]), &this->timestampEnd[currentBuffer], sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT);
 
-		if (result != VK_NOT_READY)
+		if (resultEnd != VK_NOT_READY && resultBegin != VK_NOT_READY)
 		{
-			VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPool, currentBuffer * TIMESTAMP_MAX, TIMESTAMP_MAX, sizeof(this->timestamp[currentBuffer]), &this->timestamp[currentBuffer], sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT));
+			VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPoolBegin, currentBuffer * TIMESTAMP_MAX, TIMESTAMP_MAX, sizeof(this->timestampBegin[currentBuffer]), &this->timestampBegin[currentBuffer], sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT));
+			VK_CHECK_RESULT(vkGetQueryPoolResults(this->device, this->timestampPoolEnd, currentBuffer * TIMESTAMP_MAX, TIMESTAMP_MAX, sizeof(this->timestampEnd[currentBuffer]), &this->timestampEnd[currentBuffer], sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT));
 
-			uint32_t prevBuffer = (currentBuffer - 1) % this->timestamp.size();
-
-			printf("\rbottom: %2.4fms (%2.0ffps); input: %2.4fms; vert: %2.4fms; frag: %2.4fms; early: %2.4fms; late: %2.4fms; write: %2.4fms; top: %2.4fms",
-				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_BOTTOM], timestamp[currentBuffer][TIMESTAMP_BOTTOM]),
-				1000.0 / GetTimeMS(timestamp[prevBuffer][TIMESTAMP_BOTTOM], timestamp[currentBuffer][TIMESTAMP_BOTTOM]),
-				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_VERTEX_INPUT], timestamp[currentBuffer][TIMESTAMP_VERTEX_INPUT]),
-				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_VERTEX_SHADER], timestamp[currentBuffer][TIMESTAMP_VERTEX_SHADER]),
-				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_FRAGMENT_SHADER], timestamp[currentBuffer][TIMESTAMP_FRAGMENT_SHADER]),
-				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_EARLY_FRAGMENT_TESTS], timestamp[currentBuffer][TIMESTAMP_EARLY_FRAGMENT_TESTS]),
-				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_LATE_FRAGMENT_TESTS], timestamp[currentBuffer][TIMESTAMP_LATE_FRAGMENT_TESTS]),
-				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_COLOR_ATTACHMENT_OUTPUT], timestamp[currentBuffer][TIMESTAMP_COLOR_ATTACHMENT_OUTPUT]),
-				GetTimeMS(timestamp[prevBuffer][TIMESTAMP_TOP], timestamp[currentBuffer][TIMESTAMP_TOP]));
+			printf("\r(%2.0ffps) - top: %2.4fms; input: %2.4fms; vert: %2.4fms; frag: %2.4fms; early: %2.4fms; late: %2.4fms; write: %2.4fms; bottom: %2.4fms",
+				1000.0 / GetTimeMS(timestampBegin[currentBuffer][TIMESTAMP_BOTTOM], timestampEnd[currentBuffer][TIMESTAMP_BOTTOM]),
+				GetTimeMS(timestampBegin[currentBuffer][TIMESTAMP_TOP], timestampEnd[currentBuffer][TIMESTAMP_TOP]),
+				GetTimeMS(timestampBegin[currentBuffer][TIMESTAMP_VERTEX_INPUT], timestampEnd[currentBuffer][TIMESTAMP_VERTEX_INPUT]),
+				GetTimeMS(timestampBegin[currentBuffer][TIMESTAMP_VERTEX_SHADER], timestampEnd[currentBuffer][TIMESTAMP_VERTEX_SHADER]),
+				GetTimeMS(timestampBegin[currentBuffer][TIMESTAMP_FRAGMENT_SHADER], timestampEnd[currentBuffer][TIMESTAMP_FRAGMENT_SHADER]),
+				GetTimeMS(timestampBegin[currentBuffer][TIMESTAMP_EARLY_FRAGMENT_TESTS], timestampEnd[currentBuffer][TIMESTAMP_EARLY_FRAGMENT_TESTS]),
+				GetTimeMS(timestampBegin[currentBuffer][TIMESTAMP_LATE_FRAGMENT_TESTS], timestampEnd[currentBuffer][TIMESTAMP_LATE_FRAGMENT_TESTS]),
+				GetTimeMS(timestampBegin[currentBuffer][TIMESTAMP_COLOR_ATTACHMENT_OUTPUT], timestampEnd[currentBuffer][TIMESTAMP_COLOR_ATTACHMENT_OUTPUT]),
+				GetTimeMS(timestampBegin[currentBuffer][TIMESTAMP_BOTTOM], timestampEnd[currentBuffer][TIMESTAMP_BOTTOM]));
 		}
 		else
 		{
@@ -1172,7 +1191,8 @@ public:
 		queryPoolCreateInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
 		queryPoolCreateInfo.queryCount = static_cast<std::uint32_t>(drawCmdBuffers.size()) * TIMESTAMP_MAX;
 
-		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPool));
+		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPoolBegin));
+		VK_CHECK_RESULT(vkCreateQueryPool(this->device, &queryPoolCreateInfo, NULL, &this->timestampPoolEnd));
 
 
 
